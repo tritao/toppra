@@ -76,6 +76,19 @@ std::shared_ptr<PiecewisePolyPath> curvedPath(int joints, int trial) {
                                              std::vector<value_type>{0, 1});
 }
 
+/// A straight path of length 1 with velocity limit 2 and acceleration limit 1.
+std::unique_ptr<algorithm::TOPPRA> straightProblem(int gridpoints = 51) {
+  LinearConstraintPtrs constraints{
+      std::make_shared<constraint::LinearJointVelocity>(Vector::Constant(1, -2),
+                                                        Vector::Constant(1, 2)),
+      std::make_shared<constraint::LinearJointAcceleration>(Vector::Constant(1, -1),
+                                                            Vector::Constant(1, 1))};
+  auto problem = std::make_unique<algorithm::TOPPRA>(constraints, straightPath());
+  problem->solver(std::make_shared<solver::Seidel>());
+  problem->setGridpoints(Vector::LinSpaced(gridpoints, 0, 1));
+  return problem;
+}
+
 /// Maximizes u at stage 0, where x = 4 and the next x is at most 10. Without
 /// other constraints, u reaches (10 - 4) / (2 * 0.25) = 12.
 Vector maximizeControl(Solver& solver) {
@@ -193,4 +206,27 @@ TEST(SolverInitialization, RejectsInvalidInputsBeforeReplacingTheProblem) {
 
   EXPECT_EQ(solver.nbStages(), 4u);
   EXPECT_NEAR(maximizeControl(solver)[0], 2, 1e-12);
+}
+
+// setGridpoints changed the number of stages before validating the grid, so
+// that a rejected grid left a problem whose grid and stage count disagree.
+TEST(AlgorithmReinitialization, RejectedGridsLeaveTheProblemUnchanged) {
+  auto problem = straightProblem();
+  ASSERT_EQ(problem->computePathParametrization(0, 0), ReturnCode::OK);
+  const Vector expected = problem->getParameterizationData().parametrization;
+
+  Vector nan = Vector::LinSpaced(9, 0, 1), infinite = nan, repeated = nan, decreasing = nan;
+  nan[4] = std::numeric_limits<value_type>::quiet_NaN();
+  infinite[4] = std::numeric_limits<value_type>::infinity();
+  repeated[4] = repeated[3];
+  decreasing[4] = -1;
+  const Vector otherInterval = Vector::LinSpaced(9, 0.1, 1);
+  for (const Vector& rejected :
+       {Vector(), Vector(Vector::Zero(1)), nan, infinite, repeated, decreasing,
+        otherInterval}) {
+    EXPECT_THROW(problem->setGridpoints(rejected), std::invalid_argument);
+    ASSERT_EQ(problem->computePathParametrization(0, 0), ReturnCode::OK)
+        << problem->getErrorMessage();
+    EXPECT_EQ(problem->getParameterizationData().parametrization, expected);
+  }
 }

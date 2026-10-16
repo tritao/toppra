@@ -126,13 +126,16 @@ void PathParametrizationAlgorithm::setGridpoints(const Vector& gridpoints)
 {
   Bound I (m_path->pathInterval());
   auto s = gridpoints.size();
-  m_N = s-1;
+  if (s < 2 || !gridpoints.allFinite())
+    throw std::invalid_argument("gridpoints should contain at least two finite values.");
   if (   std::fabs(gridpoints[0] - I(0)) > TOPPRA_NEARLY_ZERO
       || std::fabs(gridpoints[gridpoints.size()-1] - I(1)) > TOPPRA_NEARLY_ZERO)
     throw std::invalid_argument("Path interval does not match first and last gridpoints.");
   if (((gridpoints.tail(s-1) - gridpoints.head(s-1)).array() <= 0).any())
     throw std::invalid_argument("gridpoints should be strictly increasing.");
+  // Change the problem only once the grid is known to be valid.
   m_data.gridpoints = gridpoints;
+  m_N = s-1;
   m_initialized = false;
 }
 

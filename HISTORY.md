@@ -5,6 +5,7 @@
 - [cpp] Fix forward/backward pass failures at degenerate controllable-set bounds (#302)
 - [cpp] Fix user constraints' control bounds being ignored by the solvers
 - [cpp] Fix solvers keeping the constraints of previous initializations
+- [cpp] Fix `setGridpoints` changing the number of stages before rejecting a grid
 
 ## 0.6.10 (August 25 2026)
 
