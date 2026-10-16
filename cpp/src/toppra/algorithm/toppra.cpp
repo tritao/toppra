@@ -26,7 +26,23 @@ ReturnCode TOPPRA::computeForwardPass(value_type vel_start) {
     g_upper << -2 * deltas(i), -1;
     x.setConstant(m_data.parametrization(i));
     x_next = m_data.controllable_sets.row(i + 1);
-    solver_ret = m_solver->solveStagewiseOptim(i, H, g_upper, x, x_next, solution);
+    // At the upper bound of a controllable set, the control found there while
+    // computing the controllable sets is the smallest that reaches the highest
+    // state. If it reaches the upper bound of the next set, to rounding, no
+    // control goes faster: it is the optimum of this stage, which need not be
+    // solved again.
+    const value_type upper_control = m_data.controllable_upper_controls(i),
+                     upper_step = 2 * deltas(i) * upper_control,
+                     upper_end = m_data.parametrization(i) + upper_step;
+    if (m_data.parametrization(i) == m_data.controllable_sets(i, 1)
+        && std::isfinite(upper_end)
+        && std::abs(upper_end - x_next(1))
+           <= 4 * std::numeric_limits<value_type>::epsilon()
+              * (std::abs(m_data.parametrization(i)) + std::abs(upper_step))) {
+      solution(0) = upper_control;
+      solver_ret = true;
+    } else
+      solver_ret = m_solver->solveStagewiseOptim(i, H, g_upper, x, x_next, solution);
     // At the upper bound of a controllable set the stage is degenerate: it is
     // often a vertex where two constraints meet, admitting a single control.
     // Solved again with x fixed, rounding can leave it no control at all, so

@@ -11,6 +11,7 @@
 - [cpp] Seidel: bound the rounding of the constraints when eliminating a fixed coordinate
 - [cpp] Seidel: solve problems with an exactly fixed coordinate in one dimension
 - [cpp] Seidel: start a coordinate absent from the objective at a finite value
+- [cpp] Skip the forward-pass stage problem where the controllable set's control certifies its optimum
 
 ## 0.6.10 (August 25 2026)
 

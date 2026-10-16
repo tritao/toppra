@@ -241,3 +241,64 @@ TEST(ErrorMessageWhenFailing, ControllableSets) {
   std::string starts_with {"Failed to compute controllable set"};
   ASSERT_EQ(problem.getErrorMessage().substr(0, starts_with.size()), starts_with);
 }
+
+namespace {
+class CountingSeidel : public toppra::solver::Seidel {
+ public:
+  bool solveStagewiseOptim(std::size_t i, const toppra::Matrix& H,
+                           const toppra::Vector& g, const toppra::Bound& x,
+                           const toppra::Bound& xNext,
+                           toppra::Vector& solution) override {
+    ++calls;
+    return Seidel::solveStagewiseOptim(i, H, g, x, xNext, solution);
+  }
+  std::size_t calls = 0;
+};
+
+/// A straight path of length `length`, with velocity limit 2 and acceleration
+/// limit 1, on 51 gridpoints.
+std::unique_ptr<toppra::algorithm::TOPPRA> straightLine(
+    toppra::value_type length, std::shared_ptr<toppra::Solver> solver) {
+  toppra::Matrix coefficients(2, 1);
+  coefficients << 1, 0;
+  auto path = std::make_shared<toppra::PiecewisePolyPath>(
+      toppra::Matrices{coefficients}, std::vector<toppra::value_type>{0, length});
+  toppra::LinearConstraintPtrs constraints{
+      std::make_shared<toppra::constraint::LinearJointVelocity>(
+          toppra::Vector::Constant(1, -2), toppra::Vector::Constant(1, 2)),
+      std::make_shared<toppra::constraint::LinearJointAcceleration>(
+          toppra::Vector::Constant(1, -1), toppra::Vector::Constant(1, 1))};
+  auto problem = std::make_unique<toppra::algorithm::TOPPRA>(constraints, path);
+  problem->solver(solver);
+  problem->setGridpoints(toppra::Vector::LinSpaced(51, 0, length));
+  return problem;
+}
+}  // namespace
+
+// On a velocity plateau, the control of the controllable set's upper bound
+// brakes (it is the smallest control that reaches the bound), while the
+// forward pass must hold the speed.
+TEST(ForwardPass, HoldsTheSpeedOfAVelocityPlateau) {
+  auto problem = straightLine(0.1, std::make_shared<toppra::solver::Seidel>());
+  ASSERT_EQ(problem->computePathParametrization(4, 2), toppra::ReturnCode::OK);
+  const auto& x = problem->getParameterizationData().parametrization;
+  EXPECT_LE((x.array() - 4).abs().maxCoeff(), 1e-12);
+}
+
+// Decelerating at the acceleration limit, every state is the upper bound of
+// its controllable set and the control found there reaches the next one.
+TEST(ForwardPass, UsesTheControlOfTheUpperBoundWhereItReachesTheNextOne) {
+  auto solver = std::make_shared<CountingSeidel>();
+  auto problem = straightLine(1, solver);
+  ASSERT_EQ(problem->computePathParametrization(0, 0), toppra::ReturnCode::OK);
+  // Two problems per stage for the controllable sets, and fewer than one per
+  // stage for the forward pass.
+  EXPECT_LT(solver->calls, 2 * 50u + 50u);
+  const auto& data = problem->getParameterizationData();
+  for (int i = 0; i < 50; ++i) {
+    const auto u = (data.parametrization[i + 1] - data.parametrization[i])
+                   / (2 * (data.gridpoints[i + 1] - data.gridpoints[i]));
+    EXPECT_LE(std::abs(u), 1 + 1e-12) << "stage " << i;
+  }
+  EXPECT_NEAR(data.parametrization[25], 1, 1e-12);  // v^2 = 2 a s at s = 0.5.
+}
