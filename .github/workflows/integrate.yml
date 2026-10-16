@@ -88,6 +88,14 @@ jobs:
           cd cpp/build
           ./tests/all_tests
 
+      - name: Preserve C++ regression inputs
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: cpp-corpus-failures-${{ matrix.os }}-${{ matrix.python-version }}
+          path: cpp/build/tests/corpus-failures/*.case
+          if-no-files-found: ignore
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip

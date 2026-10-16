@@ -34,11 +34,21 @@ set(TEST_SOURCES
   test_issue_198.cpp
   test_degenerate_stages.cpp
   test_free_end.cpp
+  test_regression_corpus.cpp
   )
+
+# Every replay file of corpus/ is included; adding one needs no C++ change.
+file(GLOB TOPPRA_CORPUS_CASES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/corpus/*.case")
+set(TOPPRA_CORPUS_FILES "")
+foreach(corpus_case IN LISTS TOPPRA_CORPUS_CASES)
+  string(APPEND TOPPRA_CORPUS_FILES "  \"${corpus_case}\",\n")
+endforeach()
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/corpus-failures")
+configure_file(corpus_manifest.hpp.in corpus_manifest.hpp @ONLY)
 
 add_executable(all_tests ${TEST_SOURCES})
 target_link_libraries(all_tests PUBLIC toppra GTest::gtest ${CMAKE_THREAD_LIBS_INIT})
-target_include_directories(all_tests PRIVATE .)
+target_include_directories(all_tests PRIVATE . "${CMAKE_CURRENT_BINARY_DIR}")
 
 if(BUILD_WITH_PINOCCHIO)
   target_compile_definitions(all_tests PRIVATE -DBUILD_WITH_PINOCCHIO)

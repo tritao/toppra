@@ -14,6 +14,7 @@
 - [cpp] Skip the forward-pass stage problem where the controllable set's control certifies its optimum
 - [cpp] Add computeControllableSetsFromSquaredSpeed and computePathParametrizationFromSquaredSpeed, for an interval of final squared velocities
 - [cpp] Document that computePathParametrization takes a squared initial and a non-squared final velocity
+- [cpp] Replay recorded solver failures from a corpus of files, with generated equivalent variants
 
 ## 0.6.10 (August 25 2026)
 

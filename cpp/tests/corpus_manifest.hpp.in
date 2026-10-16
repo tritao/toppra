@@ -1,0 +1,7 @@
+#pragma once
+namespace regression {
+static const char* const kCorpusDirectory = "@CMAKE_CURRENT_SOURCE_DIR@/corpus";
+static const char* const kFailureDirectory = "@CMAKE_CURRENT_BINARY_DIR@/corpus-failures";
+static const char* const kCorpusFiles[] = {
+@TOPPRA_CORPUS_FILES@};
+}
