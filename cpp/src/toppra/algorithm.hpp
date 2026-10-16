@@ -178,6 +178,16 @@ class PathParametrizationAlgorithm {
   ReturnCode updateControllableSetsFromSquaredSpeed(const Bound& end_squared,
                                                    SolverPtr workspace = SolverPtr());
 
+  /** Initialize the solver with this algorithm's problem without solving
+   * anything, for instance on another thread that owns the algorithm, its
+   * constraints and the solver, before the boundary velocities are known. The
+   * controllable sets are kept, and the next computation does not initialize
+   * the solver again unless another algorithm has initialized it since.
+   *
+   * \param workspace As for computeForwardFromControllableSets.
+   */
+  void prepareSolverWorkspace(SolverPtr workspace = SolverPtr());
+
   /** Release the solver, keeping the controllable sets for
    * computeForwardFromControllableSets. Many algorithms can thus keep their
    * controllable sets while one solver, given to each in turn, holds the

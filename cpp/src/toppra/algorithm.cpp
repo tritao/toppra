@@ -85,6 +85,11 @@ ReturnCode PathParametrizationAlgorithm::updateControllableSetsFromSquaredSpeed(
   return m_data.ret_code;
 }
 
+void PathParametrizationAlgorithm::prepareSolverWorkspace(SolverPtr workspace) {
+  adoptSolverWorkspace(std::move(workspace));
+  initialize();
+}
+
 void PathParametrizationAlgorithm::releaseSolverWorkspace() {
   m_solver.reset();
   m_initialized = false;

@@ -474,3 +474,34 @@ TEST(ControllableSetUpdate, AFailedBackwardPassDiscardsTheControllableSets) {
   ASSERT_EQ(problem.computeControllableSetsFromSquaredSpeed(Bound{4, 4}), ReturnCode::OK);
   ASSERT_EQ(problem.computeForwardFromControllableSets(2), ReturnCode::OK);
 }
+
+TEST(ControllableSetReuse, PreparesTheSolverWithoutSolvingAndKeepsTheSets) {
+  for (auto scheme : kSchemes) {
+    auto problem = line(0, 10, scheme);
+    auto workspace = std::make_shared<CountingSeidel>();
+    problem->solver(workspace);
+    problem->prepareSolverWorkspace();
+    EXPECT_EQ(workspace->calls, 0u);
+    // The computation uses the prepared solver as it is.
+    const auto generation = workspace->generation();
+    EXPECT_THROW(problem->computeForwardFromControllableSets(0), std::logic_error);
+    ASSERT_EQ(problem->computeControllableSetsFromSquaredSpeed(kFinal), ReturnCode::OK);
+    EXPECT_EQ(workspace->generation(), generation);
+    const Matrix sets = problem->getParameterizationData().controllable_sets;
+
+    problem->releaseSolverWorkspace();
+    solveAnotherProblem(workspace, scheme, 9);
+    const auto calls = workspace->calls;
+    problem->prepareSolverWorkspace(workspace);
+    EXPECT_EQ(workspace->calls, calls);
+    EXPECT_EQ(problem->getParameterizationData().controllable_sets, sets);
+    EXPECT_THROW(problem->prepareSolverWorkspace(std::make_shared<solver::Seidel>()),
+                 std::logic_error);
+    ASSERT_EQ(problem->computeForwardFromControllableSets(0), ReturnCode::OK);
+    EXPECT_EQ(profile(*problem), profile(*freshProfile(scheme, 0)));
+
+    problem->setGridpoints(Vector::LinSpaced(101, 0, 10));
+    problem->prepareSolverWorkspace();
+    EXPECT_THROW(problem->computeForwardFromControllableSets(0), std::logic_error);
+  }
+}
