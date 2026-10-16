@@ -8,6 +8,7 @@
 - [cpp] Fix `setGridpoints` changing the number of stages before rejecting a grid
 - [cpp] Fix a solver set after a computation not being initialized
 - [cpp] Fix algorithms sharing a solver solving on each other's constraints
+- [cpp] Seidel: bound the rounding of the constraints when eliminating a fixed coordinate
 
 ## 0.6.10 (August 25 2026)
 

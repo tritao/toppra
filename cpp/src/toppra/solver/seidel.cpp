@@ -85,8 +85,32 @@ LpSol solve_lp2d(const RowVector2& v, const MatrixX3& A,
       }
       // Otherwise, assume variable i is static. Thus we are left with a 1D LP.
       int j = 1-i;
-      sol.optvar[i] = (low[i]+high[i])/2;
-      A_1d.topRows(nrows) << A.col(j), A.col(2) + sol.optvar[i] * A.col(i);
+      // Halve before adding, which cannot overflow.
+      sol.optvar[i] = low[i]/2 + high[i]/2;
+      // Eliminating x_i leaves the rows A(k,j) x_j + (x_i A(k,i) + A(k,2)) <= 0.
+      // The new constant can cancel two large terms, and its rounding, a few ulps
+      // of |x_i A(k,i)| + |A(k,2)|, then exceeds its exact value. Where the slope
+      // A(k,j) is tiny, that rounding alone would become an arbitrary bound on
+      // x_j. Each row is therefore relaxed by gamma(3) times these terms, which
+      // bounds the error of the product, the sum and the relaxation itself: a
+      // violation larger than the arithmetic can explain is still rejected.
+      // Infinite terms are not relaxed, as inf - inf would discard their row.
+      //
+      // The relative acceptance of the 2D problem below (REL_TOLERANCE) is not
+      // applied. There, a row violated within it at the current point is skipped
+      // without moving the point. Relaxing the rows of this 1D problem by it would
+      // instead move the optimum past every active row by up to 1e-10 of its
+      // terms, rather than by the few ulps of this bound.
+      const value_type epsilon = std::numeric_limits<value_type>::epsilon();
+      const value_type gamma = 3 * epsilon / (1 - 3 * epsilon);
+      for (unsigned int k = 0; k < nrows; ++k) {
+        const value_type product = sol.optvar[i] * A(k, i);
+        // Scaled separately: the sum of two finite magnitudes can overflow.
+        const value_type roundoff = gamma * std::abs(product) + gamma * std::abs(A(k, 2));
+        A_1d(k, 0) = A(k, j);
+        A_1d(k, 1) = product + A(k, 2);
+        if (std::isfinite(roundoff)) A_1d(k, 1) -= roundoff;
+      }
       A_1d.middleRows<2>(nrows) << -1,   low[j],
                                     1, -high[j];
 
