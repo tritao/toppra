@@ -230,3 +230,15 @@ TEST(AlgorithmReinitialization, RejectedGridsLeaveTheProblemUnchanged) {
     EXPECT_EQ(problem->getParameterizationData().parametrization, expected);
   }
 }
+
+// The solver setter kept the algorithm initialized, so that a solver set
+// after a computation was used without ever being initialized.
+TEST(AlgorithmReinitialization, InitializesAReplacedSolver) {
+  auto problem = straightProblem();
+  ASSERT_EQ(problem->computePathParametrization(0, 0), ReturnCode::OK);
+  const Vector expected = problem->getParameterizationData().parametrization;
+  problem->solver(std::make_shared<solver::Seidel>());
+  ASSERT_EQ(problem->computePathParametrization(0, 0), ReturnCode::OK)
+      << problem->getErrorMessage();
+  EXPECT_EQ(problem->getParameterizationData().parametrization, expected);
+}

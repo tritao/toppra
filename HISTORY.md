@@ -6,6 +6,7 @@
 - [cpp] Fix user constraints' control bounds being ignored by the solvers
 - [cpp] Fix solvers keeping the constraints of previous initializations
 - [cpp] Fix `setGridpoints` changing the number of stages before rejecting a grid
+- [cpp] Fix a solver set after a computation not being initialized
 
 ## 0.6.10 (August 25 2026)
 

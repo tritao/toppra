@@ -85,7 +85,7 @@ class PathParametrizationAlgorithm {
    *
    * Default to \ref solver::qpOASESWrapper
    */
-  void solver(SolverPtr solver) { m_solver.swap(solver); };
+  void solver(SolverPtr solver) { m_solver.swap(solver); m_initialized = false; };
 
   /** \brief Get output or result of algorithm.
    */
