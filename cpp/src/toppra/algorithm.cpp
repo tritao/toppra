@@ -1,6 +1,7 @@
 #include <toppra/algorithm.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <iostream>
 #include "toppra/toppra.hpp"
@@ -25,14 +26,73 @@ ReturnCode PathParametrizationAlgorithm::computePathParametrization(value_type v
   return m_data.ret_code;
 };
 
+namespace {
+void checkFinalSquaredSpeed(const Bound& end_squared) {
+  if (!end_squared.allFinite() || end_squared[0] < 0 || end_squared[0] > end_squared[1])
+    throw std::invalid_argument(
+        "Final squared path velocities should be finite, nonnegative and ordered.");
+}
+}  // namespace
+
+ReturnCode PathParametrizationAlgorithm::computeControllableSetsFromSquaredSpeed(
+    const Bound& end_squared) {
+  checkFinalSquaredSpeed(end_squared);
+  initialize();
+  m_solver->setupSolver();
+  Bound end = end_squared;
+  m_data.ret_code = constrainFinalSquaredSpeed(end);
+  if (m_data.ret_code == ReturnCode::OK)
+    m_data.ret_code = computeControllableSetsSquared(end);
+  return m_data.ret_code;
+}
+
+ReturnCode PathParametrizationAlgorithm::computePathParametrizationFromSquaredSpeed(
+    value_type start_squared, const Bound& end_squared) {
+  if (!std::isfinite(start_squared) || start_squared < 0)
+    throw std::invalid_argument(
+        "Initial squared path velocity should be finite and nonnegative.");
+  if (computeControllableSetsFromSquaredSpeed(end_squared) != ReturnCode::OK)
+    return m_data.ret_code;
+  // The forward pass checks the start itself, with the problem of its first
+  // stage. Compared with the controllable set, a start at zero would be
+  // rejected where rounding left a lower bound of 1e-16, for instance.
+  m_data.ret_code = computeForwardPass(start_squared);
+  return m_data.ret_code;
+}
+
+ReturnCode PathParametrizationAlgorithm::constrainFinalSquaredSpeed(Bound& end_squared) {
+  // computeControllableSets constrains each gridpoint only through the stage
+  // that leaves it: the final gridpoint's own constraints apply here.
+  const Bound requested = end_squared;
+  Matrix H;
+  Vector g(2), solution(2);
+  const Bound unused{0, 0};
+  for (int bound : {1, 0}) {
+    // Maximize, then minimize, x within the interval.
+    g << 0, bound == 1 ? -1 : 1;
+    if (!m_solver->solveStagewiseOptim(m_N, H, g, end_squared, unused, solution)) {
+      m_errorStream << "No final squared velocity in " << requested.transpose()
+                    << " is admissible at the final gridpoint.\n";
+      return ReturnCode::ERR_FAIL_CONTROLLABLE;
+    }
+    end_squared[bound] = std::max(end_squared[0], std::min(end_squared[1], solution[1]));
+  }
+  return ReturnCode::OK;
+}
+
 ReturnCode PathParametrizationAlgorithm::computeControllableSets(
     const Bound &vel_ends) {
+  return computeControllableSetsSquared(vel_ends.cwiseAbs2());
+}
+
+ReturnCode PathParametrizationAlgorithm::computeControllableSetsSquared(
+    const Bound &end_squared) {
   TOPPRA_LOG_DEBUG("computeControllableSets");
   bool solver_ret;
   Vector g_upper{2}, g_lower{2}, solution;
   g_upper << 1e-9, -1;
   g_lower << -1e-9, 1;
-  m_data.controllable_sets.row(m_N) = vel_ends.cwiseAbs2();
+  m_data.controllable_sets.row(m_N) = end_squared;
 
   Matrix H;
   Bound x (m_initXBound), x_next;

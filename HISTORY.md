@@ -12,6 +12,8 @@
 - [cpp] Seidel: solve problems with an exactly fixed coordinate in one dimension
 - [cpp] Seidel: start a coordinate absent from the objective at a finite value
 - [cpp] Skip the forward-pass stage problem where the controllable set's control certifies its optimum
+- [cpp] Add computeControllableSetsFromSquaredSpeed and computePathParametrizationFromSquaredSpeed, for an interval of final squared velocities
+- [cpp] Document that computePathParametrization takes a squared initial and a non-squared final velocity
 
 ## 0.6.10 (August 25 2026)
 

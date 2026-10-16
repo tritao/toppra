@@ -33,6 +33,7 @@ set(TEST_SOURCES
   test_toppra_approach.cpp
   test_issue_198.cpp
   test_degenerate_stages.cpp
+  test_free_end.cpp
   )
 
 add_executable(all_tests ${TEST_SOURCES})

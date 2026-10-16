@@ -96,13 +96,47 @@ class PathParametrizationAlgorithm {
 
   /** Compute the time parametrization of the given path.
    *
-   * \param vel_start
-   * \param vel_end
+   * \param vel_start Initial squared path velocity.
+   * \param vel_end Final path velocity, not squared. See
+   *        computePathParametrizationFromSquaredSpeed for an interval of final
+   *        speeds and uniformly squared units.
    * \return Return code. When not ReturnCode::OK,
    *         check PathParametrizationAlgorithm::getErrorMessage
    */
   virtual ReturnCode computePathParametrization(value_type vel_start = 0,
                                                 value_type vel_end = 0);
+
+  /** Compute the controllable sets for an interval of final squared path
+   * velocities, end_squared = [lower, upper], which is first restricted to the
+   * squared velocities that the constraints admit at the final gridpoint. Only
+   * the backward pass is computed.
+   *
+   * \throw std::invalid_argument if end_squared is not finite, nonnegative and
+   *        ordered.
+   * \return ReturnCode::ERR_FAIL_CONTROLLABLE if no velocity of the interval
+   *         is admissible or the controllable sets cannot be computed.
+   */
+  ReturnCode computeControllableSetsFromSquaredSpeed(const Bound& end_squared);
+
+  /** Compute the fastest parametrization from the squared path velocity
+   * start_squared to any final squared path velocity in end_squared, which
+   * is the last entry of the parametrization.
+   *
+   * A path can be parametrized in consecutive windows that share their end
+   * gridpoints. Computed from the last window backward, the controllable set
+   * at the first gridpoint of each window is the final interval of the
+   * previous one; computed forward, each window starts at the velocity the
+   * previous one reached. The parametrization equals that of the whole path
+   * on the same grid.
+   *
+   * \throw std::invalid_argument if start_squared is not finite and
+   *        nonnegative, or end_squared not as in
+   *        computeControllableSetsFromSquaredSpeed.
+   * \return ReturnCode::ERR_FAIL_FORWARD_PASS if start_squared is not
+   *         controllable.
+   */
+  ReturnCode computePathParametrizationFromSquaredSpeed(value_type start_squared,
+                                                       const Bound& end_squared);
 
   /** Compute the sets of feasible squared velocities.
    */
@@ -142,6 +176,16 @@ class PathParametrizationAlgorithm {
   /** Compute the sets of controllable squared path velocities.
    */
   ReturnCode computeControllableSets(const Bound &vel_ends);
+
+  /** Compute the sets of controllable squared path velocities, from the
+   * interval end_squared of final squared path velocities.
+   */
+  ReturnCode computeControllableSetsSquared(const Bound &end_squared);
+
+  /** Restrict the interval of final squared velocities to those that the
+   * constraints admit at the final gridpoint.
+   */
+  ReturnCode constrainFinalSquaredSpeed(Bound &end_squared);
 
   /** To be implemented in child method. */
   LinearConstraintPtrs m_constraints;
