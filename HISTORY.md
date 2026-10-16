@@ -9,6 +9,7 @@
 - [cpp] Fix a solver set after a computation not being initialized
 - [cpp] Fix algorithms sharing a solver solving on each other's constraints
 - [cpp] Seidel: bound the rounding of the constraints when eliminating a fixed coordinate
+- [cpp] Seidel: solve problems with an exactly fixed coordinate in one dimension
 
 ## 0.6.10 (August 25 2026)
 

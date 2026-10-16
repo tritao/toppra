@@ -536,22 +536,43 @@ namespace {
 using namespace toppra;
 using namespace toppra::solver;
 
-/// Bounds fixing a coordinate at value: crossed by one ulp, as rounding leaves
-/// them, which solve_lp2d reduces to a problem in the other coordinate.
-std::pair<value_type, value_type> fixedBounds(value_type value) {
-  return {std::nextafter(value, seidel::infinity), value};
-}
-
-/// Solves with coordinate `fixed` set to `value` and the other unbounded.
+/// Solves with coordinate `fixed` set to `value` and the other unbounded. The
+/// bounds of the fixed coordinate are either equal or, as rounding can leave
+/// them, crossed by one ulp.
 seidel::LpSol solveFixed(const RowVector2& v, const MatrixX3& A, int fixed,
-                         value_type value) {
+                         value_type value, bool crossed) {
   Vector2 low{-seidel::infinity, -seidel::infinity},
       high{seidel::infinity, seidel::infinity};
-  std::tie(low[fixed], high[fixed]) = fixedBounds(value);
+  low[fixed] = crossed ? std::nextafter(value, seidel::infinity) : value;
+  high[fixed] = value;
   MatrixX2 A_1d(A.rows() + 4, 2);
   return seidel::solve_lp2d(v, A, low, high, A_1d);
 }
 }  // namespace
+
+// Rounded from a stage at the end of a path, where the speed is fixed at 0:
+// rows 3 to 8 are nearly parallel acceleration constraints. Solved in 2D,
+// moving onto one of them projected the others to bounds placed by rounding,
+// and the stage had no control.
+TEST(Seidel, ExactFixedSpeedWithNearlyParallelAccelerationRows) {
+  MatrixX3 A(10, 3);
+  A << 0, 0, -1,
+       0, 0, -1,
+       -1.10467e-14, 620.155, -20.1003,
+       1, -310.078, -29.3254,
+       2, -620.155, -58.6508,
+       -1, 310.078, -29.3254,
+       -2, 620.155, -58.6508,
+       2, 3.46745e-12, -38.5504,
+       -2, -3.46745e-12, -38.5504,
+       0, 0, -144.53;
+  for (const RowVector2& v : {RowVector2{0, -1}, RowVector2{0, 1}, RowVector2{1, 0}}) {
+    const auto solution = solveFixed(v, A, 1, 0, false);
+    ASSERT_TRUE(solution.feasible);
+    EXPECT_EQ(solution.optvar[1], 0);
+    EXPECT_LE((A.leftCols<2>() * solution.optvar + A.col(2)).maxCoeff(), 1e-10);
+  }
+}
 
 // Found by permuting and scaling the joints of a recorded degenerate stage
 // (see the replay corpus): eliminating the fixed coordinate x cancels
@@ -559,32 +580,33 @@ seidel::LpSol solveFixed(const RowVector2& v, const MatrixX3& A, int fixed,
 // that rounding into a false bound u >= 1e3.
 TEST(Seidel, FixedCoordinateCancellationRetainsItsRoundoffBound) {
   const value_type x = 0.0011941652851974265;
-  for (int exponent : {-8, 0, 8}) {
-    for (bool transpose : {false, true}) {
-      SCOPED_TRACE(::testing::Message() << "exponent " << exponent << ", transpose "
-                                        << transpose);
-      const value_type scale = std::ldexp(1.0, exponent);
-      MatrixX3 A(3, 3);
-      A << 1, 0, 6,
-           -1, 0, -7,
-           -9.0469110939406695e-17 * scale, 24557.222204312384 * scale,
-           -29.325382257269268 * scale;
-      RowVector2 v{1, 0};
-      const int u = transpose ? 1 : 0;
-      if (transpose) {
-        A.col(0).swap(A.col(1));
-        std::swap(v[0], v[1]);
-      }
-      const auto solution = solveFixed(v, A, 1 - u, x);
-      ASSERT_TRUE(solution.feasible);
-      // The rows are relaxed by a few ulps of their terms.
-      EXPECT_NEAR(solution.optvar[u], -6, 1e-12);
-      EXPECT_LE((A.leftCols<2>() * solution.optvar + A.col(2)).maxCoeff(), 1e-10);
-      // A violation of 1e-8, far beyond the rounding, is still rejected.
-      A(2, 2) += 1e-8 * scale;
-      EXPECT_FALSE(solveFixed(v, A, 1 - u, x).feasible);
+  auto check = [x](int exponent, bool transpose, bool crossed) {
+    SCOPED_TRACE(::testing::Message() << "exponent " << exponent << ", transpose "
+                                      << transpose << ", crossed " << crossed);
+    const value_type scale = std::ldexp(1.0, exponent);
+    MatrixX3 A(3, 3);
+    A << 1, 0, 6,
+         -1, 0, -7,
+         -9.0469110939406695e-17 * scale, 24557.222204312384 * scale,
+         -29.325382257269268 * scale;
+    RowVector2 v{1, 0};
+    const int u = transpose ? 1 : 0;
+    if (transpose) {
+      A.col(0).swap(A.col(1));
+      std::swap(v[0], v[1]);
     }
-  }
+    const auto solution = solveFixed(v, A, 1 - u, x, crossed);
+    ASSERT_TRUE(solution.feasible);
+    // The rows are relaxed by a few ulps of their terms.
+    EXPECT_NEAR(solution.optvar[u], -6, 1e-12);
+    EXPECT_LE((A.leftCols<2>() * solution.optvar + A.col(2)).maxCoeff(), 1e-10);
+    // A violation of 1e-8, far beyond the rounding, is still rejected.
+    A(2, 2) += 1e-8 * scale;
+    EXPECT_FALSE(solveFixed(v, A, 1 - u, x, crossed).feasible);
+  };
+  for (int exponent : {-8, 0, 8})
+    for (bool transpose : {false, true})
+      for (bool crossed : {false, true}) check(exponent, transpose, crossed);
 }
 
 TEST(Seidel, LargeFiniteFixedCoordinateDoesNotOverflowItsMidpoint) {
@@ -592,10 +614,15 @@ TEST(Seidel, LargeFiniteFixedCoordinateDoesNotOverflowItsMidpoint) {
   A << 1, 0, -1,
        -1, 0, -1,
        0, 1e-308, -1;
-  const auto solution = solveFixed(RowVector2{1, 0}, A, 1, 1e308);
-  ASSERT_TRUE(solution.feasible);
-  EXPECT_TRUE(solution.optvar.allFinite());
-  EXPECT_NEAR(solution.optvar[0], 1, 1e-12);
+  for (bool crossed : {false, true}) {
+    const auto solution = solveFixed(RowVector2{1, 0}, A, 1, 1e308, crossed);
+    ASSERT_TRUE(solution.feasible);
+    EXPECT_TRUE(solution.optvar.allFinite());
+    EXPECT_NEAR(solution.optvar[0], 1, 1e-12);
+    if (!crossed) {
+      EXPECT_EQ(solution.optvar[1], 1e308);
+    }
+  }
 }
 
 TEST(Seidel, FixedCoordinateRoundoffBoundDoesNotOverflowForFiniteTerms) {
@@ -606,7 +633,8 @@ TEST(Seidel, FixedCoordinateRoundoffBoundDoesNotOverflowForFiniteTerms) {
   A << -1, 0, 1,
        1, 0, -2,
        1e294, 1, -1e308;
-  EXPECT_FALSE(solveFixed(RowVector2{1, 0}, A, 1, 1e308).feasible);
+  for (bool crossed : {false, true})
+    EXPECT_FALSE(solveFixed(RowVector2{1, 0}, A, 1, 1e308, crossed).feasible);
 }
 
 TEST(Seidel, FixedCoordinateKeepsInfiniteRows) {
@@ -615,9 +643,12 @@ TEST(Seidel, FixedCoordinateKeepsInfiniteRows) {
   A << 1, 0, -2,
        1, 1, seidel::infinity,
        1, 1, -seidel::infinity;
-  EXPECT_FALSE(solveFixed(RowVector2{1, 0}, A, 1, 1).feasible);
-  A.row(1) << 0, 0, -1;
-  const auto solution = solveFixed(RowVector2{1, 0}, A, 1, 1);
-  ASSERT_TRUE(solution.feasible);
-  EXPECT_NEAR(solution.optvar[0], 2, 1e-12);
+  for (bool crossed : {false, true}) {
+    EXPECT_FALSE(solveFixed(RowVector2{1, 0}, A, 1, 1, crossed).feasible);
+    MatrixX3 feasible = A;
+    feasible.row(1) << 0, 0, -1;
+    const auto solution = solveFixed(RowVector2{1, 0}, feasible, 1, 1, crossed);
+    ASSERT_TRUE(solution.feasible);
+    EXPECT_NEAR(solution.optvar[0], 2, 1e-12);
+  }
 }

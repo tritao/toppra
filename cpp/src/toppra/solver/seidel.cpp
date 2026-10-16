@@ -73,7 +73,11 @@ LpSol solve_lp2d(const RowVector2& v, const MatrixX3& A,
   // -4 according to the following order: low[0], high[0], low[1],
   // high[1].
   for (int i = 0; i < 2; ++i) {
-    if (low[i] > high[i]) {
+    // A coordinate fixed exactly, as x is in the forward pass, is eliminated
+    // too. Kept in 2D, it is a bound row of every 1D problem along a constraint
+    // line: moving onto one of two nearly parallel rows then projects the other
+    // to a bound on that line placed by the rounding of its offset alone.
+    if (low[i] >= high[i]) {
       // If the difference between low and high is sufficiently small, then
       // return infeasible.
       if (   low[i] - high[i] > std::max(std::abs(low[i]),std::abs(high[i]))* REL_TOLERANCE
@@ -86,7 +90,7 @@ LpSol solve_lp2d(const RowVector2& v, const MatrixX3& A,
       // Otherwise, assume variable i is static. Thus we are left with a 1D LP.
       int j = 1-i;
       // Halve before adding, which cannot overflow.
-      sol.optvar[i] = low[i]/2 + high[i]/2;
+      sol.optvar[i] = low[i] == high[i] ? low[i] : low[i]/2 + high[i]/2;
       // Eliminating x_i leaves the rows A(k,j) x_j + (x_i A(k,i) + A(k,2)) <= 0.
       // The new constant can cancel two large terms, and its rounding, a few ulps
       // of |x_i A(k,i)| + |A(k,2)|, then exceeds its exact value. Where the slope
