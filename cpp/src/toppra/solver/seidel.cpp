@@ -136,6 +136,12 @@ LpSol solve_lp2d(const RowVector2& v, const MatrixX3& A,
     }
 
     cur_optvar[i]   = v[i] > 0 ? high[i] : low[i];
+    // A coordinate absent from the objective is optimal anywhere in its
+    // bounds. Starting it at an infinite one projects the origin of each
+    // activated row through enormous offsets, where nearly parallel rows
+    // become infeasible; start at the point of its bounds nearest to zero.
+    if (v[i] == 0 && !std::isfinite(cur_optvar[i]))
+      cur_optvar[i] = std::max(low[i], std::min(value_type{0}, high[i]));
     sol.active_c[i] = v[i] > 0 ? HIGH(i) : LOW(i);
   }
   TOPPRA_LOG_DEBUG("cur_optvar = " << cur_optvar.transpose());
