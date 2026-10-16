@@ -81,7 +81,9 @@ class Solver {
         const Bound& x, const Bound& xNext,
         Vector& solution) = 0;
 
-    /// \brief Initialize the solver
+    /// \brief Initialize the solver, replacing the problem of any previous call.
+    /// \throw std::invalid_argument for a null path or constraint, or times that
+    ///        are not finite and strictly increasing. The solver is then unchanged.
     /// \note Child classes should call the parent implementation.
     virtual void initialize (const LinearConstraintPtrs& constraints, const GeometricPathPtr& path,
         const Vector& times);

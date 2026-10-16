@@ -1,5 +1,7 @@
 #include <toppra/solver.hpp>
 
+#include <cmath>
+
 #include <toppra/constraint.hpp>
 #include <toppra/geometric_path.hpp>
 
@@ -26,18 +28,29 @@ SolverPtr Solver::createDefault() {
 void Solver::initialize (const LinearConstraintPtrs& constraints, const GeometricPathPtr& path,
     const Vector& times)
 {
+  // Validate the inputs before replacing the current problem.
+  if (!path)
+    throw std::invalid_argument("Invalid path.");
+  if (times.size() == 0 || !times.allFinite())
+    throw std::invalid_argument("Invalid times.");
+  for (Eigen::Index i = 1; i < times.size(); ++i)
+    if (!(times[i] > times[i-1]) || !std::isfinite(times[i] - times[i-1]))
+      throw std::invalid_argument("Invalid times.");
+  for (const auto& constraint : constraints)
+    if (!constraint)
+      throw std::invalid_argument("Invalid constraint.");
+
   m_constraints = constraints;
   m_path = path;
   m_times = times;
   m_N = times.size()-1;
   m_nV = 2;
   m_deltas = times.tail(m_N) - times.head(m_N);
-
-  if ((m_deltas.array() <= 0).any())
-    throw std::invalid_argument("Invalid times.");
   /// \todo assert that the time range of the path equals [ times[0], times[m_N] ].
 
-  // Compute the constraints parameters
+  // Compute the constraints parameters, replacing those of the previous problem.
+  m_constraintsParams.lin.clear();
+  m_constraintsParams.box.clear();
   LinearConstraintParams emptyLinParams;
   BoxConstraintParams emptyBoxParams;
   for (std::size_t c = 0; c < m_constraints.size(); ++c) {
