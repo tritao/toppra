@@ -14,6 +14,7 @@ PathParametrizationAlgorithm::PathParametrizationAlgorithm(
 
 ReturnCode PathParametrizationAlgorithm::computePathParametrization(value_type vel_start,
                                                                     value_type vel_end) {
+  m_controllableValid = false;
   initialize();
   m_solver->setupSolver();
   Bound vel_ends;
@@ -41,9 +42,41 @@ ReturnCode PathParametrizationAlgorithm::computeControllableSetsFromSquaredSpeed
   m_solver->setupSolver();
   Bound end = end_squared;
   m_data.ret_code = constrainFinalSquaredSpeed(end);
-  if (m_data.ret_code == ReturnCode::OK)
-    m_data.ret_code = computeControllableSetsSquared(end);
+  if (m_data.ret_code != ReturnCode::OK) return m_data.ret_code;
+  // Only now are the controllable sets changed.
+  m_controllableValid = false;
+  m_data.ret_code = computeControllableSetsSquared(end);
+  m_controllableValid = m_data.ret_code == ReturnCode::OK;
   return m_data.ret_code;
+}
+
+ReturnCode PathParametrizationAlgorithm::computeForwardFromControllableSets(
+    value_type start_squared, SolverPtr workspace) {
+  if (!std::isfinite(start_squared) || start_squared < 0)
+    throw std::invalid_argument(
+        "Initial squared path velocity should be finite and nonnegative.");
+  if (!m_controllableValid)
+    throw std::logic_error(
+        "No controllable sets of computeControllableSetsFromSquaredSpeed for the "
+        "current configuration.");
+  adoptSolverWorkspace(std::move(workspace));
+  initialize();
+  m_solver->setupSolver();
+  m_data.ret_code = computeForwardPass(start_squared);
+  return m_data.ret_code;
+}
+
+void PathParametrizationAlgorithm::releaseSolverWorkspace() {
+  m_solver.reset();
+  m_initialized = false;
+}
+
+void PathParametrizationAlgorithm::adoptSolverWorkspace(SolverPtr workspace) {
+  if (!workspace || workspace == m_solver) return;
+  if (m_solver)
+    throw std::logic_error("Release the solver before giving the algorithm another one.");
+  m_solver = std::move(workspace);
+  m_initialized = false;
 }
 
 ReturnCode PathParametrizationAlgorithm::computePathParametrizationFromSquaredSpeed(
@@ -194,6 +227,7 @@ void PathParametrizationAlgorithm::setGridpoints(const Vector& gridpoints)
   if (((gridpoints.tail(s-1) - gridpoints.head(s-1)).array() <= 0).any())
     throw std::invalid_argument("gridpoints should be strictly increasing.");
   // Change the problem only once the grid is known to be valid.
+  m_controllableValid = false;
   m_data.gridpoints = gridpoints;
   m_N = s-1;
   m_initialized = false;

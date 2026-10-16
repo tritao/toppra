@@ -197,7 +197,30 @@ inline void checkCase(const RecordedCase& c, Vector* profile = nullptr) {
   EXPECT_LE(relativeDifference(squared->getParameterizationData().parametrization,
                                legacy->getParameterizationData().parametrization),
             1e-10);
-  if (profile) *profile = squared->getParameterizationData().parametrization;
+  const Vector expected = squared->getParameterizationData().parametrization;
+
+  // The controllable sets kept after releasing the solver give exactly the
+  // same profile, on a solver that another problem used meanwhile.
+  auto workspace = std::make_shared<solver::Seidel>();
+  squared->releaseSolverWorkspace();
+  {
+    auto coarser = problem.algorithm();
+    const Eigen::Index N = problem.gridpoints.size() - 1;
+    Vector gridpoints((N + 1) / 2 + 1);
+    for (Eigen::Index i = 0; i + 1 < gridpoints.size(); ++i)
+      gridpoints[i] = problem.gridpoints[2 * i];
+    gridpoints[gridpoints.size() - 1] = problem.gridpoints[N];
+    coarser->setGridpoints(gridpoints);
+    coarser->solver(workspace);
+    ASSERT_EQ(coarser->computeControllableSetsFromSquaredSpeed(Bound{0, 0}),
+              ReturnCode::OK)
+        << coarser->getErrorMessage();
+  }
+  ASSERT_EQ(squared->computeForwardFromControllableSets(c.startSquared, workspace),
+            ReturnCode::OK)
+      << squared->getErrorMessage();
+  EXPECT_EQ(squared->getParameterizationData().parametrization, expected);
+  if (profile) *profile = expected;
 }
 
 inline void checkNamed(const char* name) {

@@ -73,7 +73,7 @@ class PathParametrizationAlgorithm {
    * TODO: Automatic gridpoint selection is not implemented in the CPP
    * API.
    */
-  void setN(int N) { m_N = N; m_initialized = false; };
+  void setN(int N) { m_N = N; m_initialized = false; m_controllableValid = false; };
 
   /** \brief Set the gridpoints (points with the path intervals)
    *
@@ -88,7 +88,11 @@ class PathParametrizationAlgorithm {
    * A solver can be shared by several algorithms, one computation at a time:
    * an algorithm initializes it again when another one has initialized it since.
    */
-  void solver(SolverPtr solver) { m_solver.swap(solver); m_initialized = false; };
+  void solver(SolverPtr solver) {
+    m_solver.swap(solver);
+    m_initialized = false;
+    m_controllableValid = false;
+  };
 
   /** \brief Get output or result of algorithm.
    */
@@ -138,6 +142,32 @@ class PathParametrizationAlgorithm {
   ReturnCode computePathParametrizationFromSquaredSpeed(value_type start_squared,
                                                        const Bound& end_squared);
 
+  /** Compute only the forward pass, from the controllable sets of the last
+   * successful computeControllableSetsFromSquaredSpeed or
+   * computePathParametrizationFromSquaredSpeed of this algorithm.
+   *
+   * The controllable sets stay valid until the grid, N, the initial x bounds
+   * or the solver are set. Changes of the path or constraint objects
+   * themselves are not detected: they must not change while the controllable
+   * sets are reused. With the same type of solver, the result is that of
+   * computePathParametrizationFromSquaredSpeed.
+   *
+   * \param workspace A solver for an algorithm that has released its own
+   *        (releaseSolverWorkspace). It is initialized with this algorithm's
+   *        problem.
+   * \throw std::logic_error if there are no such controllable sets, or if a
+   *        workspace is given to an algorithm that has another solver.
+   */
+  ReturnCode computeForwardFromControllableSets(value_type start_squared,
+                                                SolverPtr workspace = SolverPtr());
+
+  /** Release the solver, keeping the controllable sets for
+   * computeForwardFromControllableSets. Many algorithms can thus keep their
+   * controllable sets while one solver, given to each in turn, holds the
+   * tables of a single problem at a time.
+   */
+  void releaseSolverWorkspace();
+
   /** Compute the sets of feasible squared velocities.
    */
   ReturnCode computeFeasibleSets();
@@ -148,6 +178,7 @@ class PathParametrizationAlgorithm {
   void setInitialXBounds (const Bound& xbound)
   {
     m_initXBound = xbound;
+    m_controllableValid = false;
   }
 
   /** Get the error message when PathParametrizationAlgorithm::computePathParametrization
@@ -187,6 +218,9 @@ class PathParametrizationAlgorithm {
    */
   ReturnCode constrainFinalSquaredSpeed(Bound &end_squared);
 
+  /** Use workspace as the solver of an algorithm that released its own. */
+  void adoptSolverWorkspace(SolverPtr workspace);
+
   /** To be implemented in child method. */
   LinearConstraintPtrs m_constraints;
   GeometricPathPtr m_path;
@@ -204,6 +238,9 @@ class PathParametrizationAlgorithm {
   int m_initialized = false;
   /// Solver::generation after this algorithm initialized its solver.
   std::size_t m_solverGeneration = 0;
+  /// Whether the controllable sets are those of a successful
+  /// computeControllableSetsFromSquaredSpeed for the current configuration.
+  bool m_controllableValid = false;
 
   /** Set initial bounds on \f$ \dot{s}^2.
    * \sa setInitialXBounds

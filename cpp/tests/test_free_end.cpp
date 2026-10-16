@@ -2,6 +2,7 @@
 #include <limits>
 #include <memory>
 #include <toppra/algorithm/toppra.hpp>
+#include <toppra/constraint.hpp>
 #include <toppra/constraint/linear_joint_acceleration.hpp>
 #include <toppra/constraint/linear_joint_velocity.hpp>
 #include <toppra/geometric_path/piecewise_poly_path.hpp>
@@ -193,4 +194,155 @@ TEST(FreeEnd, SolvesASingleStage) {
               ReturnCode::OK);
     EXPECT_EQ(profile(*problem)[1], 0);
   }
+}
+
+namespace {
+/// Times the straight line of length 10 to the final interval [0.2, 0.6].
+const Bound kFinal{0.2, 0.6};
+
+std::unique_ptr<algorithm::TOPPRA> freshProfile(DiscretizationType scheme,
+                                                value_type start) {
+  auto fresh = line(0, 10, scheme);
+  EXPECT_EQ(fresh->computePathParametrizationFromSquaredSpeed(start, kFinal),
+            ReturnCode::OK);
+  return fresh;
+}
+
+/// Overwrites the tables of a solver with those of another problem.
+void solveAnotherProblem(const SolverPtr& solver, DiscretizationType scheme,
+                         int gridpoints) {
+  auto other = line(2, 3, scheme, gridpoints);
+  other->solver(solver);
+  ASSERT_EQ(other->computePathParametrizationFromSquaredSpeed(0, Bound{0, 0}),
+            ReturnCode::OK);
+}
+
+/// Requires, at the bound, a constant control u = 1.
+class UnitControl : public LinearConstraint {
+ public:
+  UnitControl() : LinearConstraint(0, 0, true, true, false) {}
+
+ private:
+  void computeParams_impl(const GeometricPath&, const Vector&, Vectors&, Vectors&,
+                          Vectors&, Matrices&, Vectors&, Bounds& ubound,
+                          Bounds&) override {
+    for (auto& bound : ubound) bound = Bound{1, 1};
+  }
+};
+}  // namespace
+
+// The Seidel solver does not depend on its warm-start state, so that the
+// reused controllable sets give exactly the profile of a fresh computation.
+TEST(ControllableSetReuse, ForwardPassAfterReleasingTheSolverMatchesAFreshOne) {
+  for (auto scheme : kSchemes) {
+    auto retained = line(0, 10, scheme);
+    auto workspace = std::make_shared<solver::Seidel>();
+    retained->solver(workspace);
+    ASSERT_EQ(retained->computeControllableSetsFromSquaredSpeed(kFinal), ReturnCode::OK);
+    for (value_type start : {0., 0.1, 1.}) {
+      retained->releaseSolverWorkspace();
+      solveAnotherProblem(workspace, scheme, start == 0 ? 9 : 101);
+      ASSERT_EQ(retained->computeForwardFromControllableSets(start, workspace),
+                ReturnCode::OK);
+      auto fresh = freshProfile(scheme, start);
+      EXPECT_EQ(retained->getParameterizationData().controllable_sets,
+                fresh->getParameterizationData().controllable_sets);
+      EXPECT_EQ(profile(*retained), profile(*fresh));
+    }
+    retained->releaseSolverWorkspace();
+    EXPECT_EQ(retained->computeForwardFromControllableSets(
+                  100, std::make_shared<solver::Seidel>()),
+              ReturnCode::ERR_FAIL_FORWARD_PASS);
+  }
+}
+
+TEST(ControllableSetReuse, ForwardPassOnASolverSharedWithAnotherAlgorithm) {
+  for (auto scheme : kSchemes) {
+    auto shared = std::make_shared<solver::Seidel>();
+    auto retained = line(0, 10, scheme);
+    retained->solver(shared);
+    ASSERT_EQ(retained->computeControllableSetsFromSquaredSpeed(kFinal), ReturnCode::OK);
+    // Another algorithm initializes the shared solver with its own problem.
+    solveAnotherProblem(shared, scheme, 101);
+    ASSERT_EQ(retained->computeForwardFromControllableSets(0.1), ReturnCode::OK);
+    EXPECT_EQ(profile(*retained), profile(*freshProfile(scheme, 0.1)));
+  }
+}
+
+TEST(ControllableSetReuse, ConfigurationChangesDiscardTheControllableSets) {
+  auto problem = line(0, 1, DiscretizationType::Collocation);
+  EXPECT_THROW(problem->computeForwardFromControllableSets(0), std::logic_error);
+  const auto compute = [&problem]() {
+    ASSERT_EQ(problem->computeControllableSetsFromSquaredSpeed(Bound{0, 0}),
+              ReturnCode::OK);
+  };
+  compute();
+  problem->setGridpoints(Vector::LinSpaced(51, 0, 1));
+  EXPECT_THROW(problem->computeForwardFromControllableSets(0), std::logic_error);
+  compute();
+  problem->setInitialXBounds(Bound{0, 10});
+  EXPECT_THROW(problem->computeForwardFromControllableSets(0), std::logic_error);
+  compute();
+  problem->solver(std::make_shared<solver::Seidel>());
+  EXPECT_THROW(problem->computeForwardFromControllableSets(0), std::logic_error);
+  compute();
+  problem->setN(50);
+  EXPECT_THROW(problem->computeForwardFromControllableSets(0), std::logic_error);
+  compute();
+  ASSERT_EQ(problem->computePathParametrization(0, 0), ReturnCode::OK);
+  EXPECT_THROW(problem->computeForwardFromControllableSets(0), std::logic_error);
+}
+
+TEST(ControllableSetReuse, RejectedInputsKeepTheControllableSets) {
+  auto problem = line(0, 1, DiscretizationType::Collocation);
+  ASSERT_EQ(problem->computePathParametrizationFromSquaredSpeed(0, Bound{0, 0}),
+            ReturnCode::OK);
+  const Vector expected = profile(*problem);
+  EXPECT_THROW(problem->setGridpoints(Vector::LinSpaced(9, 0.1, 1)),
+               std::invalid_argument);
+  // No velocity of [5, 6] is admissible at the end: nothing is computed.
+  EXPECT_EQ(problem->computeControllableSetsFromSquaredSpeed(Bound{5, 6}),
+            ReturnCode::ERR_FAIL_CONTROLLABLE);
+  EXPECT_THROW(problem->computeControllableSetsFromSquaredSpeed(Bound{1, 0}),
+               std::invalid_argument);
+  ASSERT_EQ(problem->computeForwardFromControllableSets(0), ReturnCode::OK);
+  EXPECT_EQ(profile(*problem), expected);
+}
+
+TEST(ControllableSetReuse, AFailedBackwardPassDiscardsTheControllableSets) {
+  Matrix coefficients(2, 1);
+  coefficients << 1, 0;
+  auto path = std::make_shared<PiecewisePolyPath>(Matrices{coefficients},
+                                                  std::vector<value_type>{0, 1});
+  LinearConstraintPtrs constraints{
+      std::make_shared<constraint::LinearJointVelocity>(Vector::Constant(1, -2),
+                                                        Vector::Constant(1, 2)),
+      std::make_shared<UnitControl>()};
+  algorithm::TOPPRA problem(constraints, path);
+  problem.solver(std::make_shared<solver::Seidel>());
+  problem.setGridpoints(Vector::LinSpaced(51, 0, 1));
+  ASSERT_EQ(problem.computeControllableSetsFromSquaredSpeed(Bound{4, 4}), ReturnCode::OK);
+  // Zero is admissible at the end, but u = 1 requires a negative squared
+  // velocity just before it: the backward pass fails.
+  EXPECT_EQ(problem.computeControllableSetsFromSquaredSpeed(Bound{0, 0}),
+            ReturnCode::ERR_FAIL_CONTROLLABLE);
+  EXPECT_NE(problem.getErrorMessage().find("upper problem"), std::string::npos);
+  EXPECT_THROW(problem.computeForwardFromControllableSets(2), std::logic_error);
+  ASSERT_EQ(problem.computeControllableSetsFromSquaredSpeed(Bound{4, 4}), ReturnCode::OK);
+  ASSERT_EQ(problem.computeForwardFromControllableSets(2), ReturnCode::OK);
+}
+
+TEST(ControllableSetReuse, ARetainedSolverIsNotReplaced) {
+  auto problem = line(0, 1, DiscretizationType::Collocation);
+  auto own = std::make_shared<solver::Seidel>();
+  problem->solver(own);
+  ASSERT_EQ(problem->computeControllableSetsFromSquaredSpeed(Bound{0, 0}), ReturnCode::OK);
+  EXPECT_THROW(problem->computeForwardFromControllableSets(
+                   0, std::make_shared<solver::Seidel>()),
+               std::logic_error);
+  ASSERT_EQ(problem->computeForwardFromControllableSets(0, own), ReturnCode::OK);
+  problem->releaseSolverWorkspace();
+  EXPECT_THROW(problem->computeForwardFromControllableSets(0), std::logic_error);
+  ASSERT_EQ(problem->computeForwardFromControllableSets(0, std::make_shared<solver::Seidel>()),
+            ReturnCode::OK);
 }
