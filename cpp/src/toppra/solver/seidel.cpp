@@ -278,8 +278,13 @@ void Seidel::initialize (const LinearConstraintPtrs& constraints, const Geometri
     const bool identical = (p.F.size() == 1);
     for (int i = 0; i < N+1; ++i) {
       int k = (identical ? 0 : i);
-      m_A[i].middleRows(cur_index, nC_) <<
-        p.F[k] * p.a[i], p.F[k] * p.b[i], p.F[k] * p.c[i] - p.g[k];
+      // Written column by column: the comma initializer evaluated each
+      // product into a temporary vector.
+      auto rows = m_A[i].middleRows(cur_index, nC_);
+      rows.col(0).noalias() = p.F[k] * p.a[i];
+      rows.col(1).noalias() = p.F[k] * p.b[i];
+      rows.col(2).noalias() = p.F[k] * p.c[i];
+      rows.col(2) -= p.g[k];
     }
     cur_index += nC_;
   }
