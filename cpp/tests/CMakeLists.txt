@@ -23,6 +23,7 @@ set(TEST_SOURCES
   gtest_main.cpp
   test_constraints.cpp
   test_solver.cpp
+  test_solver_initialization.cpp
   test_poly_geometric_path.cpp
   test_hermite_spline.cpp
   test_cubic_spline.cpp

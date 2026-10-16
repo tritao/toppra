@@ -3,6 +3,7 @@
 ## Upcoming
 
 - [cpp] Fix forward/backward pass failures at degenerate controllable-set bounds (#302)
+- [cpp] Fix user constraints' control bounds being ignored by the solvers
 
 ## 0.6.10 (August 25 2026)
 

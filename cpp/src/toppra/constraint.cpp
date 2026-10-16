@@ -167,7 +167,7 @@ void collocationToInterpolate (const Vector& gridpoints,
 
 void LinearConstraint::allocateParams(std::size_t N,
     Vectors& a, Vectors& b, Vectors& c, Matrices& F, Vectors& g,
-    Bounds ubound, Bounds& xbound)
+    Bounds& ubound, Bounds& xbound)
 {
   if (hasLinearInequalities()) {
     Eigen::Index m (nbVariables()), k (nbConstraints());

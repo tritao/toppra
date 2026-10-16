@@ -104,7 +104,7 @@ class LinearConstraint {
     void allocateParams (std::size_t N,
         Vectors& a, Vectors& b, Vectors& c,
         Matrices& F, Vectors& g,
-        Bounds ubound, Bounds& xbound);
+        Bounds& ubound, Bounds& xbound);
 
     /** Compute numerical coefficients of the given constraint.
      *
