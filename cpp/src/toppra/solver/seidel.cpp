@@ -265,7 +265,11 @@ void Seidel::initialize (const LinearConstraintPtrs& constraints, const Geometri
   // init constraint coefficients for the 2d lps, which are
   // m_A, m_low, m_high.
   // The first dimensions of these array all equal N + 1.
-  m_A.assign(N+1, MatrixX3::Zero(nC, 3));
+  // The stage matrices of a larger grid are kept, so that a solver initialized
+  // again for grids of varying sizes keeps their storage: m_A holds as many
+  // stages as the largest grid since construction. Only the first N+1 are used.
+  if (m_A.size() < static_cast<std::size_t>(N+1)) m_A.resize(N+1);
+  for (int i = 0; i < N+1; ++i) m_A[i].setZero(nC, 3);
   m_A_ordered.resize(nC, 3);
   m_low  = MatrixX2::Constant(N + 1, 2, -seidel::infinity);
   m_high = MatrixX2::Constant(N + 1, 2,  seidel::infinity);

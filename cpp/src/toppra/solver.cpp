@@ -50,24 +50,33 @@ void Solver::initialize (const LinearConstraintPtrs& constraints, const Geometri
   /// \todo assert that the time range of the path equals [ times[0], times[m_N] ].
 
   // Compute the constraints parameters, replacing those of the previous problem.
-  m_constraintsParams.lin.clear();
-  m_constraintsParams.box.clear();
+  // The records are resized rather than cleared, so that a solver initialized
+  // again keeps the storage of their vectors and matrices.
+  std::size_t nbLin = 0, nbBox = 0;
+  for (const auto& constraint : m_constraints) {
+    if (constraint->hasLinearInequalities()) ++nbLin;
+    if (constraint->hasUbounds() || constraint->hasXbounds()) ++nbBox;
+  }
+  m_constraintsParams.lin.resize(nbLin);
+  m_constraintsParams.box.resize(nbBox);
+  std::size_t iLin = 0, iBox = 0;
   LinearConstraintParams emptyLinParams;
   BoxConstraintParams emptyBoxParams;
   for (std::size_t c = 0; c < m_constraints.size(); ++c) {
     LinearConstraint* lin = m_constraints[c].get();
     LinearConstraintParams* lparam;
     if (lin->hasLinearInequalities()) {
-      m_constraintsParams.lin.emplace_back();
-      lparam = &m_constraintsParams.lin.back();
+      lparam = &m_constraintsParams.lin[iLin++];
       lparam->cid = c;
     } else
       lparam = &emptyLinParams;
     BoxConstraintParams* bparam;
     if (lin->hasUbounds() || lin->hasXbounds()) {
-      m_constraintsParams.box.emplace_back();
-      bparam = &m_constraintsParams.box.back();
+      bparam = &m_constraintsParams.box[iBox++];
       bparam->cid = c;
+      // The record may hold bounds of the other kind, from another constraint.
+      if (!lin->hasUbounds()) bparam->u.clear();
+      if (!lin->hasXbounds()) bparam->x.clear();
     } else
       bparam = &emptyBoxParams;
     lin->computeParams(*path, times,

@@ -58,6 +58,9 @@ class InspectableSeidel : public solver::Seidel {
  public:
   std::size_t linearCount() const { return m_constraintsParams.lin.size(); }
   std::size_t boxCount() const { return m_constraintsParams.box.size(); }
+  const value_type* coefficientStorage(std::size_t point) const {
+    return m_constraintsParams.lin.at(0).a.at(point).data();
+  }
 };
 
 std::shared_ptr<PiecewisePolyPath> straightPath() {
@@ -257,4 +260,18 @@ TEST(AlgorithmReinitialization, InitializesASharedSolverAgainAfterAnotherAlgorit
   ASSERT_NE(slow->getParameterizationData().parametrization, expected);
   ASSERT_EQ(fast->computePathParametrization(0, 0), ReturnCode::OK);
   EXPECT_EQ(fast->getParameterizationData().parametrization, expected);
+}
+
+TEST(SolverInitialization, KeepsTheStorageOfTheConstraintRecords) {
+  InspectableSeidel solver;
+  const Vector acceleration = Vector::Constant(2, 1);
+  const LinearConstraintPtrs constraints{
+      std::make_shared<constraint::LinearJointAcceleration>(-acceleration, acceleration)};
+  const Vector times = Vector::LinSpaced(33, 0, 1);
+  solver.initialize(constraints, curvedPath(2, 0), times);
+  const value_type* storage = solver.coefficientStorage(9);
+  solver.initialize(constraints, curvedPath(2, 1), times);
+  EXPECT_EQ(solver.coefficientStorage(9), storage);
+  solver.initialize(constraints, curvedPath(2, 2), Vector::LinSpaced(17, 0, 1));
+  EXPECT_EQ(solver.coefficientStorage(9), storage);
 }

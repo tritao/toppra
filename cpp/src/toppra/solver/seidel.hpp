@@ -9,6 +9,8 @@ namespace toppra {
 namespace solver {
 
 /** Implementation of Seidel algorithm.
+ * Initialized again, it keeps the storage of its stage matrices for the
+ * largest grid it has been initialized with, until it is destroyed.
  *
  * */
 class Seidel : public Solver {
