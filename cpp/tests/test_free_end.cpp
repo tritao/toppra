@@ -346,3 +346,131 @@ TEST(ControllableSetReuse, ARetainedSolverIsNotReplaced) {
   ASSERT_EQ(problem->computeForwardFromControllableSets(0, std::make_shared<solver::Seidel>()),
             ReturnCode::OK);
 }
+
+namespace {
+class CountingSeidel : public solver::Seidel {
+ public:
+  bool solveStagewiseOptim(std::size_t i, const Matrix& H, const Vector& g,
+                           const Bound& x, const Bound& xNext,
+                           Vector& solution) override {
+    ++calls;
+    return Seidel::solveStagewiseOptim(i, H, g, x, xNext, solution);
+  }
+  std::size_t calls = 0;
+};
+
+void expectSameAsFresh(const algorithm::TOPPRA& updated, const Bound& finalSpeeds,
+                       DiscretizationType scheme, value_type length, value_type start) {
+  auto fresh = line(0, length, scheme);
+  ASSERT_EQ(fresh->computePathParametrizationFromSquaredSpeed(start, finalSpeeds),
+            ReturnCode::OK);
+  EXPECT_EQ(updated.getParameterizationData().controllable_sets,
+            fresh->getParameterizationData().controllable_sets);
+  EXPECT_EQ(updated.getParameterizationData().controllable_upper_controls,
+            fresh->getParameterizationData().controllable_upper_controls);
+  EXPECT_EQ(profile(updated), profile(*fresh));
+}
+}  // namespace
+
+TEST(ControllableSetUpdate, MatchesFreshComputationsForChangingFinalIntervals) {
+  for (auto scheme : kSchemes) {
+    auto updated = line(0, 10, scheme);
+    auto workspace = std::make_shared<CountingSeidel>();
+    updated->solver(workspace);
+    ASSERT_EQ(updated->computeControllableSetsFromSquaredSpeed(Bound{0, 0}), ReturnCode::OK);
+
+    // An unchanged interval needs only the two problems at the final gridpoint.
+    workspace->calls = 0;
+    ASSERT_EQ(updated->updateControllableSetsFromSquaredSpeed(Bound{0, 0}), ReturnCode::OK);
+    EXPECT_EQ(workspace->calls, 2u);
+    // Backward from the end, the sets reach the velocity limit and stop changing.
+    workspace->calls = 0;
+    ASSERT_EQ(updated->updateControllableSetsFromSquaredSpeed(kFinal), ReturnCode::OK);
+    EXPECT_GT(workspace->calls, 2u);
+    EXPECT_LT(workspace->calls, 2u + 2 * 50);
+
+    for (const Bound& finalSpeeds :
+         {Bound{1, 1}, Bound{0, 4}, kFinal, Bound{4, 4}, Bound{0, 0}}) {
+      SCOPED_TRACE(finalSpeeds);
+      ASSERT_EQ(updated->updateControllableSetsFromSquaredSpeed(finalSpeeds),
+                ReturnCode::OK);
+      for (value_type start : {0., 0.1, 1.}) {
+        ASSERT_EQ(updated->computeForwardFromControllableSets(start), ReturnCode::OK);
+        expectSameAsFresh(*updated, finalSpeeds, scheme, 10, start);
+      }
+      // The next update starts on a released solver that another problem used.
+      updated->releaseSolverWorkspace();
+      solveAnotherProblem(workspace, scheme, 9);
+      ASSERT_EQ(updated->updateControllableSetsFromSquaredSpeed(finalSpeeds, workspace),
+                ReturnCode::OK);
+    }
+  }
+}
+
+TEST(ControllableSetUpdate, RecomputesEveryStageWhenNoSetIsUnchanged) {
+  auto updated = line(0, 0.1, DiscretizationType::Collocation);
+  auto workspace = std::make_shared<CountingSeidel>();
+  updated->solver(workspace);
+  ASSERT_EQ(updated->computeControllableSetsFromSquaredSpeed(Bound{0, 0}), ReturnCode::OK);
+  workspace->calls = 0;
+  ASSERT_EQ(updated->updateControllableSetsFromSquaredSpeed(Bound{0.1, 0.1}),
+            ReturnCode::OK);
+  EXPECT_EQ(workspace->calls, 2u + 2 * 50);
+  ASSERT_EQ(updated->computeForwardFromControllableSets(0), ReturnCode::OK);
+  expectSameAsFresh(*updated, Bound{0.1, 0.1}, DiscretizationType::Collocation, 0.1, 0);
+}
+
+TEST(ControllableSetUpdate, ComparesTheRestrictedFinalInterval) {
+  auto updated = line(0, 10, DiscretizationType::Collocation);
+  auto workspace = std::make_shared<CountingSeidel>();
+  updated->solver(workspace);
+  ASSERT_EQ(updated->computeControllableSetsFromSquaredSpeed(Bound{0, 4}), ReturnCode::OK);
+  // [0, 100] is restricted to [0, 4] at the final gridpoint: nothing changes.
+  workspace->calls = 0;
+  ASSERT_EQ(updated->updateControllableSetsFromSquaredSpeed(Bound{0, 100}), ReturnCode::OK);
+  EXPECT_EQ(workspace->calls, 2u);
+  EXPECT_EQ(updated->getParameterizationData().controllable_sets(50, 1), 4);
+}
+
+TEST(ControllableSetUpdate, NeedsValidSetsAndKeepsThemForRejectedIntervals) {
+  auto updated = line(0, 1, DiscretizationType::Collocation);
+  EXPECT_THROW(updated->updateControllableSetsFromSquaredSpeed(Bound{0, 0}),
+               std::logic_error);
+  ASSERT_EQ(updated->computePathParametrizationFromSquaredSpeed(0, Bound{0, 0}),
+            ReturnCode::OK);
+  const Vector expected = profile(*updated);
+  EXPECT_THROW(updated->updateControllableSetsFromSquaredSpeed(Bound{1, 0}),
+               std::invalid_argument);
+  EXPECT_THROW(updated->updateControllableSetsFromSquaredSpeed(
+                   Bound{0, 0}, std::make_shared<solver::Seidel>()),
+               std::logic_error);
+  EXPECT_EQ(updated->updateControllableSetsFromSquaredSpeed(Bound{5, 6}),
+            ReturnCode::ERR_FAIL_CONTROLLABLE);
+  ASSERT_EQ(updated->computeForwardFromControllableSets(0), ReturnCode::OK);
+  EXPECT_EQ(profile(*updated), expected);
+  updated->setGridpoints(Vector::LinSpaced(51, 0, 1));
+  EXPECT_THROW(updated->updateControllableSetsFromSquaredSpeed(Bound{0, 0}),
+               std::logic_error);
+}
+
+TEST(ControllableSetUpdate, AFailedBackwardPassDiscardsTheControllableSets) {
+  Matrix coefficients(2, 1);
+  coefficients << 1, 0;
+  auto path = std::make_shared<PiecewisePolyPath>(Matrices{coefficients},
+                                                  std::vector<value_type>{0, 1});
+  LinearConstraintPtrs constraints{
+      std::make_shared<constraint::LinearJointVelocity>(Vector::Constant(1, -2),
+                                                        Vector::Constant(1, 2)),
+      std::make_shared<UnitControl>()};
+  algorithm::TOPPRA problem(constraints, path);
+  problem.solver(std::make_shared<solver::Seidel>());
+  problem.setGridpoints(Vector::LinSpaced(51, 0, 1));
+  ASSERT_EQ(problem.computeControllableSetsFromSquaredSpeed(Bound{4, 4}), ReturnCode::OK);
+  EXPECT_EQ(problem.updateControllableSetsFromSquaredSpeed(Bound{0, 0}),
+            ReturnCode::ERR_FAIL_CONTROLLABLE);
+  EXPECT_THROW(problem.computeForwardFromControllableSets(2), std::logic_error);
+  EXPECT_THROW(problem.updateControllableSetsFromSquaredSpeed(Bound{4, 4}),
+               std::logic_error);
+  ASSERT_EQ(problem.computeControllableSetsFromSquaredSpeed(Bound{4, 4}), ReturnCode::OK);
+  ASSERT_EQ(problem.computeForwardFromControllableSets(2), ReturnCode::OK);
+}

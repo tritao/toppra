@@ -161,6 +161,23 @@ class PathParametrizationAlgorithm {
   ReturnCode computeForwardFromControllableSets(value_type start_squared,
                                                 SolverPtr workspace = SolverPtr());
 
+  /** Update the controllable sets for another interval of final squared
+   * velocities, as computeControllableSetsFromSquaredSpeed would compute
+   * them, from those of its last successful computation (or update).
+   *
+   * The backward pass stops at the first gridpoint whose controllable set is
+   * unchanged, since the earlier ones then are too. The conditions of
+   * computeForwardFromControllableSets apply, and so does its workspace.
+   * When no velocity of the interval is admissible, ERR_FAIL_CONTROLLABLE is
+   * returned and the controllable sets are kept; when the backward pass
+   * fails, they are discarded.
+   *
+   * \throw std::invalid_argument as computeControllableSetsFromSquaredSpeed.
+   * \throw std::logic_error as computeForwardFromControllableSets.
+   */
+  ReturnCode updateControllableSetsFromSquaredSpeed(const Bound& end_squared,
+                                                   SolverPtr workspace = SolverPtr());
+
   /** Release the solver, keeping the controllable sets for
    * computeForwardFromControllableSets. Many algorithms can thus keep their
    * controllable sets while one solver, given to each in turn, holds the
@@ -211,7 +228,8 @@ class PathParametrizationAlgorithm {
   /** Compute the sets of controllable squared path velocities, from the
    * interval end_squared of final squared path velocities.
    */
-  ReturnCode computeControllableSetsSquared(const Bound &end_squared);
+  ReturnCode computeControllableSetsSquared(const Bound &end_squared,
+                                           bool stopWhereUnchanged = false);
 
   /** Restrict the interval of final squared velocities to those that the
    * constraints admit at the final gridpoint.

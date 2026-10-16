@@ -66,6 +66,25 @@ ReturnCode PathParametrizationAlgorithm::computeForwardFromControllableSets(
   return m_data.ret_code;
 }
 
+ReturnCode PathParametrizationAlgorithm::updateControllableSetsFromSquaredSpeed(
+    const Bound& end_squared, SolverPtr workspace) {
+  checkFinalSquaredSpeed(end_squared);
+  if (!m_controllableValid)
+    throw std::logic_error(
+        "No controllable sets of computeControllableSetsFromSquaredSpeed for the "
+        "current configuration.");
+  adoptSolverWorkspace(std::move(workspace));
+  initialize();
+  m_solver->setupSolver();
+  Bound end = end_squared;
+  m_data.ret_code = constrainFinalSquaredSpeed(end);
+  if (m_data.ret_code != ReturnCode::OK) return m_data.ret_code;
+  m_controllableValid = false;
+  m_data.ret_code = computeControllableSetsSquared(end, true);
+  m_controllableValid = m_data.ret_code == ReturnCode::OK;
+  return m_data.ret_code;
+}
+
 void PathParametrizationAlgorithm::releaseSolverWorkspace() {
   m_solver.reset();
   m_initialized = false;
@@ -104,7 +123,7 @@ ReturnCode PathParametrizationAlgorithm::constrainFinalSquaredSpeed(Bound& end_s
     // Maximize, then minimize, x within the interval.
     g << 0, bound == 1 ? -1 : 1;
     if (!m_solver->solveStagewiseOptim(m_N, H, g, end_squared, unused, solution)) {
-      m_errorStream << "No final squared velocity in " << requested.transpose()
+      m_errorStream << "No final squared velocity in " << requested
                     << " is admissible at the final gridpoint.\n";
       return ReturnCode::ERR_FAIL_CONTROLLABLE;
     }
@@ -119,18 +138,22 @@ ReturnCode PathParametrizationAlgorithm::computeControllableSets(
 }
 
 ReturnCode PathParametrizationAlgorithm::computeControllableSetsSquared(
-    const Bound &end_squared) {
+    const Bound &end_squared, bool stopWhereUnchanged) {
   TOPPRA_LOG_DEBUG("computeControllableSets");
   bool solver_ret;
   Vector g_upper{2}, g_lower{2}, solution;
   g_upper << 1e-9, -1;
   g_lower << -1e-9, 1;
+  if (stopWhereUnchanged && m_data.controllable_sets.row(m_N) == end_squared)
+    return ReturnCode::OK;
   m_data.controllable_sets.row(m_N) = end_squared;
 
   Matrix H;
   Bound x (m_initXBound), x_next;
   for (std::size_t i = m_N - 1; i != (std::size_t)-1; i--) {
     TOPPRA_LOG_DEBUG(i << ", " << m_N);
+    Bound previous{0, 0};
+    if (stopWhereUnchanged) previous = m_data.controllable_sets.row(i);
     x_next = m_data.controllable_sets.row(i + 1);
     solver_ret = m_solver->solveStagewiseOptim(i, H, g_upper, x, x_next, solution);
 
@@ -166,6 +189,12 @@ ReturnCode PathParametrizationAlgorithm::computeControllableSetsSquared(
     // solution despite having a set of positve bounds. This readjust
     // if the solution is negative.
     m_data.controllable_sets(i, 0) = std::max(0.0, solution[1]);
+    // The problems of the earlier stages depend only on this set: if it is
+    // unchanged, so are theirs. This stage's upper control, which depends on
+    // the next set too, has been updated.
+    if (stopWhereUnchanged && m_data.controllable_sets(i, 0) == previous[0]
+        && m_data.controllable_sets(i, 1) == previous[1])
+      break;
   }
   return ReturnCode::OK;
 }

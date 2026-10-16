@@ -220,6 +220,29 @@ inline void checkCase(const RecordedCase& c, Vector* profile = nullptr) {
             ReturnCode::OK)
       << squared->getErrorMessage();
   EXPECT_EQ(squared->getParameterizationData().parametrization, expected);
+
+  // Updated for a broader final interval, which contains the recorded final
+  // velocity, the controllable sets and profile are exactly those computed
+  // for it from scratch; updated back, they are the original ones.
+  const Bound broader{0, std::max(value_type{1}, c.endSquared)};
+  auto fresh = problem.algorithm();
+  ASSERT_EQ(fresh->computePathParametrizationFromSquaredSpeed(c.startSquared, broader),
+            ReturnCode::OK)
+      << fresh->getErrorMessage();
+  ASSERT_EQ(squared->updateControllableSetsFromSquaredSpeed(broader, workspace),
+            ReturnCode::OK)
+      << squared->getErrorMessage();
+  ASSERT_EQ(squared->computeForwardFromControllableSets(c.startSquared), ReturnCode::OK)
+      << squared->getErrorMessage();
+  EXPECT_EQ(squared->getParameterizationData().controllable_sets,
+            fresh->getParameterizationData().controllable_sets);
+  EXPECT_EQ(squared->getParameterizationData().parametrization,
+            fresh->getParameterizationData().parametrization);
+  ASSERT_EQ(squared->updateControllableSetsFromSquaredSpeed(
+                Bound{c.endSquared, c.endSquared}),
+            ReturnCode::OK);
+  ASSERT_EQ(squared->computeForwardFromControllableSets(c.startSquared), ReturnCode::OK);
+  EXPECT_EQ(squared->getParameterizationData().parametrization, expected);
   if (profile) *profile = expected;
 }
 
