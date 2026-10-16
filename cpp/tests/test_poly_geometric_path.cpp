@@ -268,3 +268,45 @@ TEST_F(CompareWithScipyCubicSpline, 2stDerivative){
   }
 }
 
+
+TEST_F(ConstructPiecewisePoly, EvaluatesIntoReusableStorage) {
+  toppra::Vector output(17);
+  for (int order = 0; order <= 2; ++order) {
+    for (double position : {0., 0.25, 1., 1.75, 2.}) {
+      path.eval_single_into(position, order, output);
+      ASSERT_EQ(output.size(), 2);
+      const double local = position >= 1 ? position - 1 : position;
+      const double expected = order == 0   ? local * local + 2 * local + 3
+                              : order == 1 ? 2 * local + 2
+                                           : 2;
+      EXPECT_DOUBLE_EQ(output[0], expected);
+      EXPECT_DOUBLE_EQ(output[1], expected);
+      EXPECT_EQ(output, path.eval_single(position, order));
+      // Evaluating again reuses the storage.
+      const auto* storage = output.data();
+      path.eval_single_into(position, order, output);
+      EXPECT_EQ(output.data(), storage);
+    }
+  }
+}
+
+namespace {
+class EvalSingleOnlyPath : public toppra::GeometricPath {
+ public:
+  EvalSingleOnlyPath() : GeometricPath(1) {}
+  toppra::Vector eval_single(toppra::value_type position, int order = 0) const override {
+    return toppra::Vector::Constant(1, position * (order + 1));
+  }
+  toppra::Bound pathInterval() const override { return toppra::Bound{0, 1}; }
+};
+}  // namespace
+
+TEST(GeometricPath, EvaluatesIntoStorageWithEvalSingleByDefault) {
+  EvalSingleOnlyPath path;
+  toppra::Vector output;
+  for (int order = 0; order <= 2; ++order) {
+    path.eval_single_into(0.25, order, output);
+    ASSERT_EQ(output.size(), 1);
+    EXPECT_EQ(output[0], 0.25 * (order + 1));
+  }
+}

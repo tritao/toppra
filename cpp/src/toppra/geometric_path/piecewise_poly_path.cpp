@@ -215,16 +215,20 @@ Bound PiecewisePolyPath::pathInterval() const {
 
 
 Vector PiecewisePolyPath::eval_single(value_type pos, int order) const {
+  Vector v;
+  PiecewisePolyPath::eval_single_into(pos, order, v);
+  return v;
+}
+
+void PiecewisePolyPath::eval_single_into(value_type pos, int order, Vector& v) const {
   assert(order < 3 && order >= 0);
-  Vector v(m_dof);
-  v.setZero();
+  v.setZero(m_dof);
   size_t seg_index = findSegmentIndex(pos);
   const auto& coeff = getCoefficient(seg_index, order);
   for (int power = 0; power < m_degree + 1; power++) {
     v += coeff.row(power) *
          pow(pos - m_breakpoints[seg_index], m_degree - power);
   }
-  return v;
 }
 
 // Not the most efficient implementation. Coefficients are

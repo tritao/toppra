@@ -30,11 +30,11 @@ void LinearJointVelocity::computeParams_impl(const GeometricPath& path,
   Eigen::Index ndofs (m_lower.size());
   assert(path.dof() == m_lower.size());
 
-  Vector v, v_inv(ndofs), lb_v(ndofs);
+  Vector v(ndofs), v_inv(ndofs), lb_v(ndofs);
   for (std::size_t i = 0; i < N_1; ++i) {
     computeVelocityLimits(gridpoints[i]);
 
-    v = path.eval_single (gridpoints[i], 1);
+    path.eval_single_into(gridpoints[i], 1, v);
     assert(ndofs == v.size());
 
     v_inv.noalias() = v.cwiseInverse();

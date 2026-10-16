@@ -15,6 +15,7 @@
 - [cpp] Add computeControllableSetsFromSquaredSpeed and computePathParametrizationFromSquaredSpeed, for an interval of final squared velocities
 - [cpp] Document that computePathParametrization takes a squared initial and a non-squared final velocity
 - [cpp] Replay recorded solver failures from a corpus of files, with generated equivalent variants
+- [cpp] Add GeometricPath::eval_single_into, used by the linear joint constraints. A class deriving from PiecewisePolyPath that overrides eval_single must override it too
 
 ## 0.6.10 (August 25 2026)
 

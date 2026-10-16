@@ -42,9 +42,9 @@ void LinearJointAcceleration::computeParams_impl(const GeometricPath& path,
 
   assert(ndofs == path.dof());
   for (std::size_t i = 0; i < N_1; ++i) {
-    a[i] = path.eval_single(times[i], 1);
+    path.eval_single_into(times[i], 1, a[i]);
     assert(a[i].size() == ndofs);
-    b[i] = path.eval_single(times[i], 2);
+    path.eval_single_into(times[i], 2, b[i]);
     assert(b[i].size() == ndofs);
     c[i].setZero();
   }

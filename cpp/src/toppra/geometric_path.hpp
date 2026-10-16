@@ -36,6 +36,19 @@ public:
   virtual Vector eval_single(value_type, int order = 0) const = 0;
 
   /**
+   * \brief Evaluate the path at given position into \p output, which may
+   * reuse its storage.
+   *
+   * The default implementation calls eval_single. The linear joint constraints
+   * evaluate the path with this method: a class that overrides eval_single of a
+   * path that overrides this method, such as PiecewisePolyPath, must override
+   * this method too.
+   */
+  virtual void eval_single_into(value_type position, int order, Vector& output) const {
+    output = eval_single(position, order);
+  }
+
+  /**
    * \brief Evaluate the path at given positions (vector).
    *
    * Default implementation: Evaluation each point one-by-one.

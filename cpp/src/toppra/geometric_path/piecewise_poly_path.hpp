@@ -70,6 +70,7 @@ class PiecewisePolyPath : public GeometricPath {
    * /brief Evaluate the path at given position.
    */
   Vector eval_single(value_type, int order = 0) const override;
+  void eval_single_into(value_type, int order, Vector& output) const override;
 
   /**
    * /brief Evaluate the path at given positions (vector).
