@@ -40,6 +40,7 @@ void Solver::initialize (const LinearConstraintPtrs& constraints, const Geometri
     if (!constraint)
       throw std::invalid_argument("Invalid constraint.");
 
+  ++m_generation;
   m_constraints = constraints;
   m_path = path;
   m_times = times;

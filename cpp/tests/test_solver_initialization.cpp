@@ -76,16 +76,16 @@ std::shared_ptr<PiecewisePolyPath> curvedPath(int joints, int trial) {
                                              std::vector<value_type>{0, 1});
 }
 
-/// A straight path of length 1 with velocity limit 2 and acceleration limit 1.
-std::unique_ptr<algorithm::TOPPRA> straightProblem(int gridpoints = 51) {
+/// A straight path of length 1 with acceleration limit 1.
+std::unique_ptr<algorithm::TOPPRA> straightProblem(value_type velocity = 2) {
   LinearConstraintPtrs constraints{
-      std::make_shared<constraint::LinearJointVelocity>(Vector::Constant(1, -2),
-                                                        Vector::Constant(1, 2)),
+      std::make_shared<constraint::LinearJointVelocity>(Vector::Constant(1, -velocity),
+                                                        Vector::Constant(1, velocity)),
       std::make_shared<constraint::LinearJointAcceleration>(Vector::Constant(1, -1),
                                                             Vector::Constant(1, 1))};
   auto problem = std::make_unique<algorithm::TOPPRA>(constraints, straightPath());
   problem->solver(std::make_shared<solver::Seidel>());
-  problem->setGridpoints(Vector::LinSpaced(gridpoints, 0, 1));
+  problem->setGridpoints(Vector::LinSpaced(51, 0, 1));
   return problem;
 }
 
@@ -241,4 +241,20 @@ TEST(AlgorithmReinitialization, InitializesAReplacedSolver) {
   ASSERT_EQ(problem->computePathParametrization(0, 0), ReturnCode::OK)
       << problem->getErrorMessage();
   EXPECT_EQ(problem->getParameterizationData().parametrization, expected);
+}
+
+// An algorithm initialized its solver only once. When another algorithm
+// initialized the same solver, the first one kept solving on the other's
+// tables.
+TEST(AlgorithmReinitialization, InitializesASharedSolverAgainAfterAnotherAlgorithm) {
+  auto shared = std::make_shared<solver::Seidel>();
+  auto fast = straightProblem(2), slow = straightProblem(0.5);
+  fast->solver(shared);
+  slow->solver(shared);
+  ASSERT_EQ(fast->computePathParametrization(0, 0), ReturnCode::OK);
+  const Vector expected = fast->getParameterizationData().parametrization;
+  ASSERT_EQ(slow->computePathParametrization(0, 0), ReturnCode::OK);
+  ASSERT_NE(slow->getParameterizationData().parametrization, expected);
+  ASSERT_EQ(fast->computePathParametrization(0, 0), ReturnCode::OK);
+  EXPECT_EQ(fast->getParameterizationData().parametrization, expected);
 }

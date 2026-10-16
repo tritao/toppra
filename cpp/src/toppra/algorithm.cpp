@@ -141,7 +141,9 @@ void PathParametrizationAlgorithm::setGridpoints(const Vector& gridpoints)
 
 void PathParametrizationAlgorithm::initialize() {
   m_errorStream = std::stringstream();
-  if (m_initialized) return;
+  // A solver shared with another algorithm must be initialized again once the
+  // other algorithm has initialized it with its own problem.
+  if (m_initialized && m_solver->generation() == m_solverGeneration) return;
   if (!m_solver)
     throw std::logic_error("You must set a solver first.");
   Bound I (m_path->pathInterval());
@@ -170,6 +172,7 @@ void PathParametrizationAlgorithm::initialize() {
   m_data.controllable_upper_controls.resize(s - 1);
   m_data.feasible_sets.resize(s, 2);
   m_solver->initialize(m_constraints, m_path, m_data.gridpoints);
+  m_solverGeneration = m_solver->generation();
   m_initialized = true;
 }
 

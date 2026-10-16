@@ -51,6 +51,12 @@ class Solver {
       return m_nV;
     }
 
+    /// \copydoc Solver::m_generation
+    std::size_t generation () const
+    {
+      return m_generation;
+    }
+
     /** Solve a stage-wise quadratic (or linear) optimization problem.
      *
      *  The quadratic optimization problem is described below:
@@ -132,6 +138,9 @@ class Solver {
     std::size_t m_nV;
     /// Time increment between each stage. Size \ref nbStages
     Vector m_deltas;
+    /// Number of times the solver has been initialized. Algorithms sharing a
+    /// solver compare it to know whether another one has initialized it since.
+    std::size_t m_generation = 0;
 
 }; // class Solver
 

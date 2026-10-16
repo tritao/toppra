@@ -84,6 +84,9 @@ class PathParametrizationAlgorithm {
   /** \brief Set the LP/QP solver
    *
    * Default to \ref solver::qpOASESWrapper
+   *
+   * A solver can be shared by several algorithms, one computation at a time:
+   * an algorithm initializes it again when another one has initialized it since.
    */
   void solver(SolverPtr solver) { m_solver.swap(solver); m_initialized = false; };
 
@@ -155,6 +158,8 @@ class PathParametrizationAlgorithm {
   int m_N = 100;
 
   int m_initialized = false;
+  /// Solver::generation after this algorithm initialized its solver.
+  std::size_t m_solverGeneration = 0;
 
   /** Set initial bounds on \f$ \dot{s}^2.
    * \sa setInitialXBounds
