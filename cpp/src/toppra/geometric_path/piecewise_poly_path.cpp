@@ -219,7 +219,7 @@ Vector PiecewisePolyPath::eval_single(value_type pos, int order) const {
   Vector v(m_dof);
   v.setZero();
   size_t seg_index = findSegmentIndex(pos);
-  auto coeff = getCoefficient(seg_index, order);
+  const auto& coeff = getCoefficient(seg_index, order);
   for (int power = 0; power < m_degree + 1; power++) {
     v += coeff.row(power) *
          pow(pos - m_breakpoints[seg_index], m_degree - power);
